@@ -127,18 +127,214 @@ docker run --rm -v $(pwd):/dsp grame/faust \
 
 ---
 
-## Deployment
+## Hosting & Deployment
 
-All three files (`phaseflip.html`, `manifest.json`, `polarity_inverter.dsp`) must be served from the **same directory over HTTPS** — required for microphone access and Service Worker registration.
+All files must be served from the **same directory over HTTPS** — required for microphone access (`getUserMedia`) and Service Worker registration. PhaseFlip is a fully static app (no server-side code), so it deploys to any static host.
 
-```bash
-# Quick local HTTPS for testing (requires mkcert)
-mkcert -install
-mkcert localhost
-npx http-server . --ssl --cert localhost.pem --key localhost-key.pem
+---
+
+### Hosting Compatibility Overview
+
+| Host | Free Tier | HTTPS | Custom Headers | COOP/COEP¹ | PWA Install | Service Worker | Custom Domain | Notes |
+|---|---|---|---|---|---|---|---|---|
+| **Cloudflare Pages** | ✅ Unlimited requests | ✅ | ✅ `_headers` file | ✅ | ✅ | ✅ | ✅ Free TLS | ⭐ Recommended |
+| **GitHub Pages** | ✅ Public repos | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ Free TLS | No custom headers |
+| **Netlify** | ✅ 100 GB/month | ✅ | ✅ `_headers` file | ✅ | ✅ | ✅ | ✅ Free TLS | Drop-in deploy |
+| **Vercel** | ✅ 100 GB/month | ✅ | ✅ `vercel.json` | ✅ | ✅ | ✅ | ✅ Free TLS | `vercel.json` needed |
+| **Render** | ✅ Static sites free | ✅ | ✅ via dashboard | ✅ | ✅ | ✅ | ✅ Free TLS | Git-connected |
+| **Surge.sh** | ✅ Unlimited | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ paid HTTPS only | CLI deploy in seconds |
+| **Firebase Hosting** | ✅ 10 GB/month | ✅ | ✅ `firebase.json` | ✅ | ✅ | ✅ | ✅ Free TLS | Requires Google account |
+| **Deno Deploy** | ✅ 100K req/day | ✅ | ✅ via Worker script | ✅ | ✅ | ✅ | ✅ Free TLS | Edge-deployed |
+| **Bunny.net CDN** | ❌ Pay-as-you-go | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ~$0.01/GB — cheapest CDN |
+| **AWS S3 + CloudFront** | ❌ Free tier 12mo | ✅ | ✅ CloudFront policy | ✅ | ✅ | ✅ | ✅ | Overkill for this app |
+
+> ¹ **COOP/COEP** (`Cross-Origin-Opener-Policy` + `Cross-Origin-Embedder-Policy`) are required for `SharedArrayBuffer` and WASM SIMD — needed in future roadmap versions. The current app works without them on all hosts.
+
+**Quick pick:**
+- **Zero config, best performance** → Cloudflare Pages
+- **Already on GitHub, simplest** → GitHub Pages
+- **Drag-and-drop, no Git required** → Netlify
+- **Existing Vercel projects** → Vercel with `vercel.json`
+
+---
+
+### Repository Structure
+
+Before deploying, your repo root should look like this:
+
+```
+phaseflip/
+├── phaseflip.html          ← main app
+├── manifest.json           ← PWA manifest
+├── polarity_inverter.dsp   ← FAUST source
+├── _headers                ← Cloudflare Pages headers (required)
+├── _redirects              ← Cloudflare Pages redirects
+├── _config.yml             ← GitHub Pages Jekyll config
+└── .github/
+    └── workflows/
+        └── deploy.yml      ← GitHub Actions auto-deploy
 ```
 
-Then on your phone, navigate to `https://<your-local-ip>:8080/phaseflip.html` and tap **Add to Home Screen**.
+---
+
+### Option 1 — Cloudflare Pages ✅ Recommended
+
+Cloudflare Pages serves over HTTPS globally via CDN and supports custom response headers via `_headers` — which is needed to set `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` (required for future WASM SIMD / SharedArrayBuffer support). Free tier is generous and includes unlimited requests.
+
+#### Step-by-step
+
+**1. Push repo to GitHub (or GitLab)**
+```bash
+git init
+git add .
+git commit -m "Initial PhaseFlip commit"
+git remote add origin https://github.com/YOUR_USERNAME/phaseflip.git
+git push -u origin main
+```
+
+**2. Connect to Cloudflare Pages**
+1. Log in at [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Go to **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+3. Authorise GitHub and select your `phaseflip` repository
+4. Configure build settings:
+
+| Setting | Value |
+|---|---|
+| Production branch | `main` |
+| Build command | *(leave blank — no build step)* |
+| Build output directory | `/` *(root)* |
+| Root directory | `/` |
+
+5. Click **Save and Deploy**
+
+Cloudflare will assign a URL like `https://phaseflip.pages.dev` immediately.
+
+**3. Custom domain (optional)**
+- In Pages → your project → **Custom domains** → **Set up a custom domain**
+- Add your domain (e.g. `phaseflip.yourdomain.com`)
+- Cloudflare auto-provisions TLS
+
+**4. Verify headers are active**
+```bash
+curl -I https://phaseflip.pages.dev/phaseflip.html | grep -E "permissions|cross-origin"
+# Should show:
+# permissions-policy: microphone=self, ...
+# cross-origin-opener-policy: same-origin
+# cross-origin-embedder-policy: require-corp
+```
+
+**5. Install on phone**
+- Navigate to `https://phaseflip.pages.dev/phaseflip.html`
+- iOS Safari: Share → **Add to Home Screen**
+- Android Chrome: Menu → **Add to Home Screen** / **Install App**
+
+#### The `_headers` file (already included)
+
+```
+/*
+  Permissions-Policy: microphone=self, speaker-selection=self, autoplay=self
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Service-Worker-Allowed: /
+
+/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+```
+
+> **Note:** Without `_headers`, Cloudflare Pages still works for the current PWA. The headers become mandatory only when loading `.wasm` binaries directly or using `SharedArrayBuffer`.
+
+---
+
+### Option 2 — GitHub Pages ✅ Compatible
+
+GitHub Pages serves static files over HTTPS for free from any public (or private, with Pro) repository. It does **not** support custom response headers natively — but PhaseFlip works without `COOP`/`COEP` headers in its current form (no raw `SharedArrayBuffer` usage). The AudioWorklet, Service Worker, mic access, and PWA install all work correctly on GitHub Pages.
+
+#### Step-by-step
+
+**1. Push repo to GitHub**
+```bash
+git init
+git add .
+git commit -m "Initial PhaseFlip commit"
+git remote add origin https://github.com/YOUR_USERNAME/phaseflip.git
+git push -u origin main
+```
+
+**2. Enable GitHub Pages via Actions (recommended)**
+
+The included `.github/workflows/deploy.yml` handles this automatically on every push to `main`.
+
+To activate it:
+1. Go to your repo on GitHub → **Settings** → **Pages**
+2. Under **Source**, select **GitHub Actions**
+3. Push any commit — the workflow will deploy automatically
+
+Your app will be live at:
+```
+https://YOUR_USERNAME.github.io/phaseflip/phaseflip.html
+```
+
+**3. Alternative: Enable GitHub Pages via branch (simpler)**
+1. Go to **Settings** → **Pages**
+2. Source: **Deploy from a branch**
+3. Branch: `main`, folder: `/ (root)`
+4. Click **Save**
+
+GitHub will publish within ~60 seconds at:
+```
+https://YOUR_USERNAME.github.io/phaseflip/
+```
+
+**4. `.nojekyll` file (important)**
+
+GitHub Pages runs Jekyll by default, which ignores files starting with `_`. Since `_headers` and `_redirects` start with underscores, add a `.nojekyll` file to disable Jekyll processing:
+
+```bash
+touch .nojekyll
+git add .nojekyll
+git commit -m "Disable Jekyll"
+git push
+```
+
+> The included `_config.yml` also handles this, but `.nojekyll` is the belt-and-suspenders approach.
+
+**5. Custom domain (optional)**
+1. In repo **Settings** → **Pages** → **Custom domain**, enter e.g. `phaseflip.yourdomain.com`
+2. Add a `CNAME` DNS record pointing to `YOUR_USERNAME.github.io`
+3. Tick **Enforce HTTPS** once DNS propagates
+
+#### GitHub Pages limitations vs Cloudflare Pages
+
+| Feature | GitHub Pages | Cloudflare Pages |
+|---|---|---|
+| HTTPS | ✅ | ✅ |
+| Custom headers (`_headers`) | ❌ | ✅ |
+| `SharedArrayBuffer` support | ❌ (no COOP/COEP) | ✅ |
+| Bandwidth | Soft 100 GB/month | Unlimited |
+| Build minutes | 2,000/month (free) | 500/month (free) |
+| Deploy previews | ❌ | ✅ |
+| Custom domain + TLS | ✅ | ✅ |
+| PWA install works | ✅ | ✅ |
+| Mic access works | ✅ | ✅ |
+| Offline / Service Worker | ✅ | ✅ |
+
+**Verdict:** Both work for the current app. Use **Cloudflare Pages** if you plan to integrate compiled `.wasm` binaries or need `SharedArrayBuffer` for the SIMD WASM path. Use **GitHub Pages** for the simplest possible setup with zero configuration.
+
+---
+
+### Option 3 — Local HTTPS (testing)
+
+```bash
+# Requires Node.js and mkcert
+npm install -g mkcert
+mkcert create-ca
+mkcert create-cert
+
+npx http-server . --ssl --cert cert.pem --key cert-key.pem -p 8080
+```
+
+Navigate on your phone to `https://<your-machine-ip>:8080/phaseflip.html` (both devices must be on the same Wi-Fi network).
 
 ---
 
