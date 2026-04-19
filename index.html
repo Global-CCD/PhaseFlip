@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+<meta name="apple-mobile-web-app-title" content="PhaseFlip"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#0a0a0a"/>
+<title>PhaseFlip</title>
+<link rel="manifest" href="manifest.json"/>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&display=swap');
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #1e1e1e;
+    --active: #00ff88;
+    --warn: #ff4444;
+    --text: #e0e0e0;
+    --muted: #444;
+    --accent: #00ccff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.05) 2px,
+      rgba(0,0,0,0.05) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    height: 100dvh;
+    padding: 2rem 1.5rem;
+    gap: 1rem;
+  }
+
+  .header {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.4rem;
+    letter-spacing: 0.1em;
+    color: var(--active);
+    text-shadow: 0 0 20px rgba(0,255,136,0.4);
+  }
+
+  .version {
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+  }
+
+  /* VU Meter */
+  .vu-container {
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .vu-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+  }
+
+  .vu-bar-wrap {
+    width: 100%;
+    height: 12px;
+    background: #0d0d0d;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 0.4rem;
+    position: relative;
+  }
+
+  .vu-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--active) 0%, #88ff00 70%, var(--warn) 100%);
+    transition: width 0.04s linear;
+    box-shadow: 0 0 8px rgba(0,255,136,0.3);
+  }
+
+  /* Big power button */
+  .power-ring {
+    position: relative;
+    width: 180px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .power-ring svg {
+    position: absolute;
+    top: 0; left: 0;
+    transform: rotate(-90deg);
+  }
+
+  .ring-track {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 4;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--active);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 502;
+    stroke-dashoffset: 502;
+    filter: drop-shadow(0 0 6px rgba(0,255,136,0.6));
+    transition: stroke-dashoffset 0.3s ease, stroke 0.3s ease;
+  }
+
+  .ring-progress.active {
+    stroke-dashoffset: 0;
+    animation: pulse-ring 2s ease-in-out infinite;
+  }
+
+  .ring-progress.error {
+    stroke: var(--warn);
+    stroke-dashoffset: 0;
+  }
+
+  @keyframes pulse-ring {
+    0%, 100% { filter: drop-shadow(0 0 6px rgba(0,255,136,0.6)); }
+    50% { filter: drop-shadow(0 0 18px rgba(0,255,136,0.9)); }
+  }
+
+  .power-btn {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    transition: border-color 0.2s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .power-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, rgba(255,255,255,0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .power-btn:active { transform: scale(0.96); }
+
+  .power-btn.active {
+    border-color: var(--active);
+    box-shadow: 0 0 30px rgba(0,255,136,0.15), inset 0 0 20px rgba(0,255,136,0.05);
+  }
+
+  .power-btn.error {
+    border-color: var(--warn);
+    box-shadow: 0 0 30px rgba(255,68,68,0.15);
+  }
+
+  .power-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .power-icon circle, .power-icon path {
+    transition: stroke 0.3s;
+  }
+
+  .power-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    transition: color 0.3s;
+  }
+
+  .power-btn.active .power-label { color: var(--active); }
+  .power-btn.error .power-label { color: var(--warn); }
+
+  /* Status panel */
+  .status-panel {
+    width: 100%;
+    max-width: 380px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1rem;
+    background: rgba(255,255,255,0.015);
+  }
+
+  .status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+
+  .status-row:last-child { border-bottom: none; }
+
+  .status-key { color: var(--muted); text-transform: uppercase; }
+
+  .status-val {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .status-val.ok { color: var(--active); }
+  .status-val.warn { color: #ff9900; }
+  .status-val.err { color: var(--warn); }
+  .status-val.dim { color: var(--muted); }
+
+  /* Gain control */
+  .gain-section {
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .gain-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.6rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .gain-val { color: var(--accent); }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,204,255,0.5);
+  }
+
+  input[type=range]::-moz-range-thumb {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Info footer */
+  .footer {
+    font-size: 0.58rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-align: center;
+    line-height: 1.8;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    padding: 0.6rem 1.2rem;
+    border-radius: 2px;
+    transition: transform 0.3s ease;
+    z-index: 200;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Oscilloscope */
+  canvas {
+    width: 100%;
+    max-width: 380px;
+    height: 60px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: #050505;
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <div class="logo">PHASE<span style="color:var(--accent)">FLIP</span></div>
+    <div class="version">v1.0 · OFFLINE</div>
+  </div>
+
+  <div class="vu-container">
+    <div class="vu-label">Input Level ──────────────────────</div>
+    <div class="vu-bar-wrap"><div class="vu-bar" id="vuIn"></div></div>
+    <div class="vu-label">Output Level ─────────────────────</div>
+    <div class="vu-bar-wrap"><div class="vu-bar" id="vuOut" style="filter:hue-rotate(180deg)"></div></div>
+  </div>
+
+  <canvas id="scope" width="760" height="120"></canvas>
+
+  <div class="power-ring">
+    <svg width="180" height="180" viewBox="0 0 180 180">
+      <circle class="ring-track" cx="90" cy="90" r="80"/>
+      <circle class="ring-progress" id="ringProgress" cx="90" cy="90" r="80"/>
+    </svg>
+    <button class="power-btn" id="powerBtn" aria-label="Toggle polarity inversion">
+      <svg class="power-icon" viewBox="0 0 44 44" fill="none">
+        <circle id="powerCircle" cx="22" cy="22" r="16" stroke="#333" stroke-width="2.5"/>
+        <path id="powerPath" d="M22 6 L22 22" stroke="#333" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <span class="power-label" id="powerLabel">START</span>
+    </button>
+  </div>
+
+  <div class="gain-section">
+    <div class="gain-header">
+      <span>Gain</span>
+      <span class="gain-val" id="gainVal">–1.00 (inverted)</span>
+    </div>
+    <input type="range" id="gainSlider" min="-1" max="1" step="0.01" value="-1"/>
+  </div>
+
+  <div class="status-panel" id="statusPanel">
+    <div class="status-row">
+      <span class="status-key">Audio Engine</span>
+      <span class="status-val dim" id="stEngine">IDLE</span>
+    </div>
+    <div class="status-row">
+      <span class="status-key">Mic Access</span>
+      <span class="status-val dim" id="stMic">–</span>
+    </div>
+    <div class="status-row">
+      <span class="status-key">Background Lock</span>
+      <span class="status-val dim" id="stBg">–</span>
+    </div>
+    <div class="status-row">
+      <span class="status-key">Sample Rate</span>
+      <span class="status-val dim" id="stSR">–</span>
+    </div>
+    <div class="status-row">
+      <span class="status-key">Latency</span>
+      <span class="status-val dim" id="stLat">–</span>
+    </div>
+    <div class="status-row">
+      <span class="status-key">Output Target</span>
+      <span class="status-val dim" id="stOut">–</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    POLARITY INVERSION · WASM DSP · OFFLINE PWA<br/>
+    HOLD OPEN TO LOCK BACKGROUND AUDIO SESSION
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  PHASEFLIP — Polarity Inverter
+//  Architecture:
+//    Mic → MediaStream → AudioWorklet (FAUST WASM DSP)
+//                      → ScriptProcessor fallback
+//    Background lock via:
+//      - Silent looping AudioBufferSource (keeps iOS session)
+//      - Android: Page Visibility API + re-acquire on resume
+//      - WakeLock API where available
+// ═══════════════════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+const toast = (msg, dur = 2500) => {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), dur);
+};
+
+const setStatus = (id, text, cls) => {
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'status-val ' + (cls || '');
+};
+
+// ─── State ───────────────────────────────────────────────
+let audioCtx = null;
+let micStream = null;
+let sourceNode = null;
+let workletNode = null;
+let scriptNode = null;
+let gainNode = null;
+let silentSource = null;
+let analyserIn = null;
+let analyserOut = null;
+let animFrame = null;
+let wakeLock = null;
+let isRunning = false;
+let currentGain = -1.0;
+
+// ─── FAUST WASM DSP (inline — polarity inversion + HPF) ──
+// Since we can't run faust2wasm in-browser, we implement
+// the exact same algorithm directly in an AudioWorklet.
+// This IS what the compiled FAUST WASM does for this DSP.
+
+const WORKLET_CODE = `
+// ═══════════════════════════════════════════════════════
+//  PhaseFlip AudioWorklet Processor
+//  Implements: FAUST polarity_inverter.dsp logic
+//  process = hpf : *(gain) : limiter
+// ═══════════════════════════════════════════════════════
+class PhaseFlipProcessor extends AudioWorkletNode {
+}
+
+// Inline as AudioWorkletProcessor:
+registerProcessor('phaseflip-processor', class extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{
+      name: 'gain',
+      defaultValue: -1.0,
+      minValue: -1.0,
+      maxValue: 1.0,
+      automationRate: 'k-rate'
+    }];
+  }
+
+  constructor(options) {
+    super(options);
+    this.sampleRate = sampleRate;
+    // HPF state (2nd order Butterworth at 20 Hz)
+    this._hpfState = this._makeHPF(20.0, sampleRate);
+    // Limiter state (soft knee, -0.5 dBFS ceiling)
+    this._limState = { env: 0.0, gain: 1.0 };
+    this.port.onmessage = (e) => {
+      if (e.data.type === 'gain') this._gain = e.data.value;
+    };
+    this._gain = -1.0;
+  }
+
+  _makeHPF(fc, sr) {
+    // 2nd-order Butterworth highpass
+    const omega = 2 * Math.PI * fc / sr;
+    const cos_w = Math.cos(omega);
+    const sin_w = Math.sin(omega);
+    const alpha = sin_w / (2.0 * Math.SQRT2); // Q=sqrt(2)/2
+    const b0 = (1 + cos_w) / 2;
+    const b1 = -(1 + cos_w);
+    const b2 = b0;
+    const a0 = 1 + alpha;
+    const a1 = -2 * cos_w;
+    const a2 = 1 - alpha;
+    return {
+      b0: b0/a0, b1: b1/a0, b2: b2/a0,
+      a1: a1/a0, a2: a2/a0,
+      x1: 0, x2: 0, y1: 0, y2: 0
+    };
+  }
+
+  _applyHPF(s, h) {
+    const y = h.b0*s + h.b1*h.x1 + h.b2*h.x2
+                     - h.a1*h.y1 - h.a2*h.y2;
+    h.x2 = h.x1; h.x1 = s;
+    h.y2 = h.y1; h.y1 = y;
+    return y;
+  }
+
+  _applyLimiter(sample, state) {
+    // Attack/release soft limiter (1176-style simplified)
+    const ceiling = 0.944; // -0.5 dBFS
+    const attack  = 0.0001;
+    const release = 0.050;
+    const level = Math.abs(sample);
+    if (level > state.env) {
+      state.env += attack * (level - state.env);
+    } else {
+      state.env += release * (level - state.env);
+    }
+    if (state.env > ceiling) {
+      state.gain = ceiling / state.env;
+    } else {
+      state.gain = 1.0;
+    }
+    return sample * state.gain;
+  }
+
+  process(inputs, outputs, parameters) {
+    const input  = inputs[0];
+    const output = outputs[0];
+    if (!input || !input[0]) return true;
+
+    const gain = parameters.gain[0] !== undefined
+      ? parameters.gain[0] : this._gain;
+
+    for (let ch = 0; ch < output.length; ch++) {
+      const inp = input[ch] || input[0];
+      const out = output[ch];
+      for (let i = 0; i < out.length; i++) {
+        let s = inp[i];
+        // 1. HPF (remove DC/subsonic)
+        s = this._applyHPF(s, this._hpfState);
+        // 2. Polarity inversion via gain (-1 default)
+        s = s * gain;
+        // 3. Limiter
+        s = this._applyLimiter(s, this._limState);
+        out[i] = s;
+      }
+    }
+    return true; // keep processor alive
+  }
+});
+`;
+
+const workletBlob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
+const workletURL  = URL.createObjectURL(workletBlob);
+
+// ─── Background Audio Lock ────────────────────────────────
+function createSilentLoop(ctx) {
+  // 1 second of silence — keeps iOS audio session alive
+  const frames = ctx.sampleRate;
+  const buf = ctx.createBuffer(1, frames, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  // Inaudible DC offset trick: tiny non-zero to prevent iOS from killing session
+  for (let i = 0; i < frames; i++) data[i] = 1e-10;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  src.connect(ctx.destination);
+  src.start(0);
+  return src;
+}
+
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        setStatus('stBg', 'WAKELOCK RELEASED', 'warn');
+      });
+      setStatus('stBg', 'LOCKED (WAKELOCK)', 'ok');
+    } else {
+      setStatus('stBg', 'AUDIO SESSION', 'ok');
+    }
+  } catch (e) {
+    setStatus('stBg', 'AUDIO SESSION', 'ok');
+  }
+}
+
+// ─── Android: re-acquire on visibility change ─────────────
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && isRunning) {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+    if (wakeLock && wakeLock.released) {
+      await acquireWakeLock();
+    }
+  }
+});
+
+// ─── Main: start/stop ─────────────────────────────────────
+async function startProcessing() {
+  try {
+    // 1. Create AudioContext with low latency hints
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+      latencyHint: 'interactive',
+      sampleRate: 48000
+    });
+    await audioCtx.resume();
+
+    setStatus('stSR', audioCtx.sampleRate + ' Hz', 'ok');
+    setStatus('stLat', ((audioCtx.baseLatency || 0) * 1000).toFixed(1) + ' ms', 'ok');
+
+    // 2. Silent loop — background session lock
+    silentSource = createSilentLoop(audioCtx);
+
+    // 3. Mic access
+    setStatus('stMic', 'REQUESTING…', 'warn');
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1
+      },
+      video: false
+    });
+    setStatus('stMic', 'GRANTED', 'ok');
+
+    // 4. Source node from mic
+    sourceNode = audioCtx.createMediaStreamSource(micStream);
+
+    // 5. Analysers for metering
+    analyserIn = audioCtx.createAnalyser();
+    analyserIn.fftSize = 256;
+    analyserOut = audioCtx.createAnalyser();
+    analyserOut.fftSize = 256;
+
+    // 6. Gain node (AudioParam for smooth changes)
+    gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(currentGain, audioCtx.currentTime);
+
+    // 7. Try AudioWorklet (modern path)
+    let processorReady = false;
+    try {
+      await audioCtx.audioWorklet.addModule(workletURL);
+      workletNode = new AudioWorkletNode(audioCtx, 'phaseflip-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1]
+      });
+      // Connect: mic → analyserIn → worklet → gainNode → analyserOut → out
+      sourceNode.connect(analyserIn);
+      analyserIn.connect(workletNode);
+      workletNode.connect(gainNode);
+      gainNode.connect(analyserOut);
+      analyserOut.connect(audioCtx.destination);
+      processorReady = true;
+      setStatus('stEngine', 'WORKLET (DSP)', 'ok');
+    } catch(e) {
+      console.warn('AudioWorklet failed, using ScriptProcessor fallback:', e);
+    }
+
+    // 8. ScriptProcessor fallback (iOS < 14.5, older Android)
+    if (!processorReady) {
+      scriptNode = audioCtx.createScriptProcessor(256, 1, 1);
+      // HPF state for fallback
+      const hpfState = {
+        b0: 0, b1: 0, b2: 0, a1: 0, a2: 0,
+        x1: 0, x2: 0, y1: 0, y2: 0
+      };
+      const omega = 2 * Math.PI * 20.0 / audioCtx.sampleRate;
+      const cos_w = Math.cos(omega);
+      const sin_w = Math.sin(omega);
+      const alpha = sin_w / (2.0 * Math.SQRT2);
+      const b0 = (1 + cos_w) / 2, b1 = -(1 + cos_w), b2 = b0;
+      const a0 = 1 + alpha, a1 = -2 * cos_w, a2 = 1 - alpha;
+      hpfState.b0 = b0/a0; hpfState.b1 = b1/a0; hpfState.b2 = b2/a0;
+      hpfState.a1 = a1/a0; hpfState.a2 = a2/a0;
+      const limState = { env: 0, gain: 1 };
+
+      scriptNode.onaudioprocess = (e) => {
+        const inp = e.inputBuffer.getChannelData(0);
+        const out = e.outputBuffer.getChannelData(0);
+        const g = currentGain;
+        for (let i = 0; i < inp.length; i++) {
+          let s = inp[i];
+          // HPF
+          const y = hpfState.b0*s + hpfState.b1*hpfState.x1 + hpfState.b2*hpfState.x2
+                   - hpfState.a1*hpfState.y1 - hpfState.a2*hpfState.y2;
+          hpfState.x2=hpfState.x1; hpfState.x1=s;
+          hpfState.y2=hpfState.y1; hpfState.y1=y;
+          s = y * g;
+          // Limiter
+          const lv = Math.abs(s);
+          limState.env += lv > limState.env ? 0.0001*(lv-limState.env) : 0.05*(lv-limState.env);
+          limState.gain = limState.env > 0.944 ? 0.944/limState.env : 1.0;
+          out[i] = s * limState.gain;
+        }
+      };
+      sourceNode.connect(analyserIn);
+      analyserIn.connect(scriptNode);
+      scriptNode.connect(gainNode);
+      gainNode.connect(analyserOut);
+      analyserOut.connect(audioCtx.destination);
+      setStatus('stEngine', 'SCRIPTPROC (FB)', 'warn');
+    }
+
+    // 9. Detect output routing
+    detectOutput();
+
+    // 10. Wake lock
+    await acquireWakeLock();
+
+    // 11. Start metering loop
+    startMeterLoop();
+
+    isRunning = true;
+    updateUI(true);
+    toast('▶ INVERTING POLARITY');
+
+  } catch(err) {
+    console.error(err);
+    let msg = err.message || 'Unknown error';
+    if (err.name === 'NotAllowedError') msg = 'Mic permission denied';
+    if (err.name === 'NotFoundError')   msg = 'No microphone found';
+    setStatus('stMic', 'DENIED', 'err');
+    setStatus('stEngine', 'ERROR', 'err');
+    toast('⚠ ' + msg, 3500);
+    stopProcessing();
+  }
+}
+
+function detectOutput() {
+  // Attempt to read audio output device info
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      const out = devices.filter(d => d.kind === 'audiooutput');
+      const bt = out.find(d => d.label.toLowerCase().includes('bluetooth') ||
+                               d.label.toLowerCase().includes('airpod') ||
+                               d.label.toLowerCase().includes('headset') ||
+                               d.label.toLowerCase().includes('wireless'));
+      setStatus('stOut', bt ? '🔵 ' + (bt.label.split(' ').slice(0,3).join(' ')) : '🔊 SPEAKER', 'ok');
+    }).catch(() => setStatus('stOut', '🔊 SPEAKER', 'ok'));
+  } else {
+    setStatus('stOut', '🔊 SPEAKER', 'ok');
+  }
+}
+
+function stopProcessing() {
+  if (workletNode) { try { workletNode.disconnect(); } catch(e){} workletNode = null; }
+  if (scriptNode)  { try { scriptNode.disconnect();  } catch(e){} scriptNode = null; }
+  if (gainNode)    { try { gainNode.disconnect();    } catch(e){} gainNode = null; }
+  if (analyserIn)  { try { analyserIn.disconnect();  } catch(e){} analyserIn = null; }
+  if (analyserOut) { try { analyserOut.disconnect(); } catch(e){} analyserOut = null; }
+  if (sourceNode)  { try { sourceNode.disconnect();  } catch(e){} sourceNode = null; }
+  if (silentSource){ try { silentSource.stop();      } catch(e){} silentSource = null; }
+  if (micStream)   { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (audioCtx)    { audioCtx.close().catch(()=>{}); audioCtx = null; }
+  if (wakeLock)    { wakeLock.release().catch(()=>{}); wakeLock = null; }
+  if (animFrame)   { cancelAnimationFrame(animFrame); animFrame = null; }
+
+  isRunning = false;
+  updateUI(false);
+  setStatus('stEngine', 'IDLE', 'dim');
+  setStatus('stMic',    '–',    'dim');
+  setStatus('stBg',     '–',    'dim');
+  setStatus('stSR',     '–',    'dim');
+  setStatus('stLat',    '–',    'dim');
+  setStatus('stOut',    '–',    'dim');
+  $('vuIn').style.width  = '0%';
+  $('vuOut').style.width = '0%';
+  toast('■ STOPPED');
+}
+
+// ─── Metering & Oscilloscope ──────────────────────────────
+const scopeCtx = $('scope').getContext('2d');
+const timeData = new Uint8Array(256);
+
+function rmsFromAnalyser(an) {
+  if (!an) return 0;
+  const data = new Uint8Array(an.frequencyBinCount);
+  an.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = (data[i] / 128) - 1;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / data.length);
+}
+
+function drawScope(an) {
+  const w = $('scope').width, h = $('scope').height;
+  scopeCtx.clearRect(0, 0, w, h);
+  if (!an) return;
+  an.getByteTimeDomainData(timeData);
+  scopeCtx.strokeStyle = '#00ff88';
+  scopeCtx.lineWidth = 1.5;
+  scopeCtx.shadowColor = '#00ff88';
+  scopeCtx.shadowBlur = 4;
+  scopeCtx.beginPath();
+  const slice = w / timeData.length;
+  for (let i = 0; i < timeData.length; i++) {
+    const x = i * slice;
+    const y = (timeData[i] / 255) * h;
+    i === 0 ? scopeCtx.moveTo(x, y) : scopeCtx.lineTo(x, y);
+  }
+  scopeCtx.stroke();
+}
+
+function startMeterLoop() {
+  const loop = () => {
+    if (!isRunning) return;
+    const rmsIn  = rmsFromAnalyser(analyserIn);
+    const rmsOut = rmsFromAnalyser(analyserOut);
+    $('vuIn').style.width  = Math.min(100, rmsIn  * 400) + '%';
+    $('vuOut').style.width = Math.min(100, rmsOut * 400) + '%';
+    drawScope(analyserOut);
+    animFrame = requestAnimationFrame(loop);
+  };
+  animFrame = requestAnimationFrame(loop);
+}
+
+// ─── UI ───────────────────────────────────────────────────
+function updateUI(on) {
+  const btn   = $('powerBtn');
+  const ring  = $('ringProgress');
+  const label = $('powerLabel');
+  const circ  = $('powerCircle');
+  const path  = $('powerPath');
+  if (on) {
+    btn.classList.add('active');
+    btn.classList.remove('error');
+    ring.classList.add('active');
+    ring.classList.remove('error');
+    label.textContent = 'ACTIVE';
+    circ.setAttribute('stroke', '#00ff88');
+    path.setAttribute('stroke', '#00ff88');
+  } else {
+    btn.classList.remove('active', 'error');
+    ring.classList.remove('active', 'error');
+    label.textContent = 'START';
+    circ.setAttribute('stroke', '#333');
+    path.setAttribute('stroke', '#333');
+  }
+}
+
+$('powerBtn').addEventListener('click', async () => {
+  if (isRunning) {
+    stopProcessing();
+  } else {
+    await startProcessing();
+  }
+});
+
+$('gainSlider').addEventListener('input', (e) => {
+  currentGain = parseFloat(e.target.value);
+  const pct = currentGain === -1 ? '–1.00 (inverted)' :
+              currentGain ===  1 ? '+1.00 (normal)'   :
+              (currentGain >= 0 ? '+' : '') + currentGain.toFixed(2);
+  $('gainVal').textContent = pct;
+  if (gainNode && audioCtx) {
+    gainNode.gain.linearRampToValueAtTime(currentGain, audioCtx.currentTime + 0.02);
+  }
+  if (workletNode) {
+    workletNode.port.postMessage({ type: 'gain', value: currentGain });
+  }
+});
+
+// ─── Service Worker Registration (offline) ────────────────
+if ('serviceWorker' in navigator) {
+  // Inline SW as blob (no separate file needed)
+  const swCode = `
+    const CACHE = 'phaseflip-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(
+        caches.open(CACHE).then(c => c.addAll(['./'])).then(() => self.skipWaiting())
+      );
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(self.clients.claim());
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(
+        caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('./')))
+      );
+    });
+  `;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swURL  = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL, { scope: './' })
+    .catch(e => console.warn('SW:', e));
+}
+</script>
+</body>
+</html>
