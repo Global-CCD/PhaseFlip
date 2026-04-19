@@ -1,0 +1,19 @@
+{
+  "name": "PhaseFlip – Polarity Inverter",
+  "short_name": "PhaseFlip",
+  "description": "Live microphone polarity inversion DSP – offline PWA",
+  "start_url": "./phaseflip.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["utilities", "audio"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230a0a0a'/><circle cx='256' cy='256' r='200' fill='none' stroke='%2300ff88' stroke-width='20'/><line x1='256' y1='56' x2='256' y2='256' stroke='%2300ff88' stroke-width='20' stroke-linecap='round'/><text x='256' y='340' font-family='monospace' font-size='120' fill='%2300ccff' text-anchor='middle'>&#177;</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
